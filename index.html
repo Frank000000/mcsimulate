@@ -8,6 +8,8 @@
     <style>
         body { background-color: #0b0f19; color: #f8fafc; }
         .slot-card { transition: all 0.3s ease; }
+        .history-scroll::-webkit-scrollbar { width: 6px; }
+        .history-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -15,7 +17,7 @@
         <!-- 头部 -->
         <header class="text-center mb-8">
             <h1 class="text-3xl font-bold text-amber-400 mb-2">鸣潮声骸强化与打孔模拟器</h1>
-            <p class="text-slate-400 text-sm">测试运气、计算词条分、寻找最优打孔与止损策略</p>
+            <p class="text-slate-400 text-sm">测试运气、计算词条分、实时策略剪枝与历史留痕</p>
         </header>
 
         <!-- 配置面板 -->
@@ -43,7 +45,7 @@
         <!-- 统计面板 -->
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
-                <div class="text-slate-400 text-xs">总模拟数</div>
+                <div class="text-slate-400 text-xs">总处理胚子数</div>
                 <div id="statTotal" class="text-lg font-bold text-slate-100">0</div>
             </div>
             <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
@@ -51,16 +53,16 @@
                 <div id="statSuccess" class="text-lg font-bold text-amber-400">0</div>
             </div>
             <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
-                <div class="text-slate-400 text-xs">当前达标率</div>
+                <div class="text-slate-400 text-xs">毕业达成率</div>
                 <div id="statRate" class="text-lg font-bold text-emerald-400">0.00%</div>
             </div>
             <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
-                <div class="text-slate-400 text-xs">平均打孔消耗</div>
+                <div class="text-slate-400 text-xs">平均单件消耗</div>
                 <div id="statAvgCost" class="text-lg font-bold text-cyan-400">0.0</div>
             </div>
             <div class="bg-slate-800 border border-amber-500/40 rounded-lg p-3 text-center col-span-2 md:col-span-1">
-                <div class="text-amber-400 text-xs font-semibold">本件总消耗打孔器</div>
-                <div id="currentEchoCost" class="text-lg font-bold text-amber-300">0</div>
+                <div class="text-amber-400 text-xs font-semibold">总消耗打孔器(累计)</div>
+                <div id="totalCumulativeCost" class="text-lg font-bold text-amber-300">0</div>
             </div>
         </div>
 
@@ -83,11 +85,22 @@
             <div class="flex flex-wrap gap-3">
                 <button onclick="rollNextSlot()" id="btnRoll" class="flex-1 bg-amber-500 hover:bg-amber-600 font-semibold py-3 px-4 rounded-lg text-sm text-slate-950 transition-colors shadow">开孔 / 强化下一词条 (+10 打孔器)</button>
                 <button onclick="autoComplete()" id="btnAuto" class="bg-slate-700 hover:bg-slate-600 font-semibold py-3 px-4 rounded-lg text-sm transition-colors">直接开满</button>
-                <button onclick="resetEcho()" class="bg-rose-600/80 hover:bg-rose-700 font-semibold py-3 px-4 rounded-lg text-sm transition-colors">放弃 / 换新胚子</button>
+                <button onclick="saveAndResetEcho(false)" class="bg-rose-600/80 hover:bg-rose-700 font-semibold py-3 px-4 rounded-lg text-sm transition-colors">放弃 / 换新胚子</button>
             </div>
             
             <div id="adviceBox" class="mt-4 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300">
                 提示：点击「开孔 / 强化下一词条」开始强化。
+            </div>
+        </div>
+
+        <!-- 历史记录面板 -->
+        <div class="bg-slate-800/90 border border-slate-700 rounded-xl p-6 mb-6 shadow-xl">
+            <div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-700">
+                <h2 class="text-base font-bold text-slate-200">历史声骸记录 (已换下/已放弃)</h2>
+                <button onclick="clearAllRecords()" class="bg-slate-700 hover:bg-rose-900/60 border border-slate-600 text-rose-300 px-3 py-1.5 rounded-lg text-xs transition-colors">清空所有记录</button>
+            </div>
+            <div id="historyListContainer" class="history-scroll max-h-56 overflow-y-auto space-y-2 pr-2 text-xs text-slate-400">
+                <div class="text-center py-6 text-slate-500">暂无历史记录</div>
             </div>
         </div>
 
@@ -131,7 +144,8 @@
             finished: false
         };
 
-        let stats = { total: 0, success: 0, totalCost: 0 };
+        let stats = { total: 0, success: 0, cumulativeCost: 0 };
+        let historyRecords = [];
 
         function getRandomVal(cat) {
             const table = probTables[cat];
@@ -226,13 +240,12 @@
                 `;
                 container.appendChild(card);
             }
-            document.getElementById('currentEchoCost').innerText = currentEcho.cost;
         }
 
         function updateDisplay() {
             const score = calculateScoreUpTo(currentEcho.currentStep);
             document.getElementById('currentScoreDisplay').innerText = score.toFixed(2);
-            document.getElementById('currentEchoCost').innerText = currentEcho.cost;
+            document.getElementById('totalCumulativeCost').innerText = stats.cumulativeCost;
             
             const adviceBox = document.getElementById('adviceBox');
             const btnRoll = document.getElementById('btnRoll');
@@ -243,10 +256,10 @@
                 btnRoll.classList.add('opacity-50', 'cursor-not-allowed');
                 if (score >= target) {
                     adviceBox.className = 'mt-4 p-3 bg-emerald-950/60 border border-emerald-500/50 rounded-lg text-xs text-emerald-300';
-                    adviceBox.innerText = `[已达标] 本次强化完成，评分达到 ${score.toFixed(2)} 分！`;
+                    adviceBox.innerText = `[已达标] 本次强化完成，评分达到 ${score.toFixed(2)} 分！请点击换新胚子。`;
                 } else {
                     adviceBox.className = 'mt-4 p-3 bg-rose-950/60 border border-rose-500/50 rounded-lg text-xs text-rose-300';
-                    adviceBox.innerText = `[未达标] 最终评分为 ${score.toFixed(2)} 分，未达到目标。`;
+                    adviceBox.innerText = `[未达标] 最终评分为 ${score.toFixed(2)} 分，未达到目标。请点击换新胚子。`;
                 }
             } else if (currentEcho.currentStep === 0) {
                 btnRoll.disabled = false;
@@ -255,7 +268,7 @@
                 adviceBox.innerText = '点击开孔开始强化第一个副词条。';
             } else {
                 const maxRem = getMaxRemaining(currentEcho.currentStep);
-                const optimisticScore = score + (0.95 * maxRem); // 混合 0.95 激进系数
+                const optimisticScore = score + (0.95 * maxRem);
                 if (optimisticScore < target) {
                     adviceBox.className = 'mt-4 p-3 bg-rose-950/60 border border-rose-500/50 rounded-lg text-xs text-rose-300';
                     adviceBox.innerText = `[建议止损] 当前分 ${score.toFixed(2)} + 剩余期望上限 ${(0.95*maxRem).toFixed(2)} = ${optimisticScore.toFixed(2)} < 目标分 ${target}。建议放弃换胚子！`;
@@ -270,12 +283,12 @@
             if (currentEcho.finished) return;
             currentEcho.currentStep++;
             currentEcho.cost += 10;
+            stats.cumulativeCost += 10;
             renderSlots();
             
             if (currentEcho.currentStep === 5) {
                 currentEcho.finished = true;
                 stats.total++;
-                stats.totalCost += currentEcho.cost;
                 const finalScore = calculateScoreUpTo(5);
                 const target = parseFloat(document.getElementById('targetScore').value);
                 if (finalScore >= target) stats.success++;
@@ -288,10 +301,11 @@
             if (currentEcho.finished) return;
             const remaining = 5 - currentEcho.currentStep;
             currentEcho.currentStep = 5;
-            currentEcho.cost += remaining * 10;
+            const addCost = remaining * 10;
+            currentEcho.cost += addCost;
+            stats.cumulativeCost += addCost;
             currentEcho.finished = true;
             stats.total++;
-            stats.totalCost += currentEcho.cost;
             const finalScore = calculateScoreUpTo(5);
             const target = parseFloat(document.getElementById('targetScore').value);
             if (finalScore >= target) stats.success++;
@@ -300,10 +314,66 @@
             updateStats();
         }
 
-        function resetEcho() {
+        function saveAndResetEcho(isManualAbandon) {
+            // 如果已经强化过至少一个词条，将其记录保留到历史中
+            if (currentEcho.currentStep > 0) {
+                const finalScore = calculateScoreUpTo(currentEcho.currentStep);
+                const target = parseFloat(document.getElementById('targetScore').value);
+                const tier = document.getElementById('tierSelect').value.toUpperCase();
+                const status = currentEcho.finished ? (finalScore >= target ? '已毕业' : '未达标') : `中途放弃(${currentEcho.currentStep}/5槽)`;
+                
+                const record = {
+                    time: new Date().toLocaleTimeString(),
+                    tier: tier,
+                    score: finalScore.toFixed(2),
+                    cost: currentEcho.cost,
+                    status: status,
+                    details: currentEcho.chosenCats.slice(0, currentEcho.currentStep).map((cat, idx) => {
+                        const val = currentEcho.values[idx];
+                        const disp = (cat === '生命' || cat === '攻击' || cat === '防御') ? val : (val + '%');
+                        return `${cat}: ${disp}`;
+                    }).join(' | ')
+                };
+                historyRecords.unshift(record);
+                renderHistory();
+            }
+            
             initNewEcho();
             document.getElementById('btnRoll').disabled = false;
             document.getElementById('btnRoll').classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyListContainer');
+            if (historyRecords.length === 0) {
+                container.innerHTML = '<div class="text-center py-6 text-slate-500">暂无历史记录</div>';
+                return;
+            }
+            container.innerHTML = '';
+            historyRecords.forEach((rec, idx) => {
+                const item = document.createElement('div');
+                item.className = 'bg-slate-900 border border-slate-700/60 rounded-lg p-2.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-1.5';
+                item.innerHTML = `
+                    <div>
+                        <span class="text-amber-400 font-semibold">[${rec.tier}]</span>
+                        <span class="text-slate-200 font-bold ml-1">${rec.score}分</span>
+                        <span class="text-slate-500 ml-2">(${rec.cost}个打孔器)</span>
+                        <span class="ml-2 px-1.5 py-0.5 rounded text-[10px] ${rec.status === '已毕业' ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}">${rec.status}</span>
+                    </div>
+                    <div class="text-slate-400 text-[11px] truncate max-w-lg">${rec.details}</div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function clearAllRecords() {
+            if (confirm("确定要清空所有声骸历史记录并归零统计数据吗？")) {
+                stats = { total: 0, success: 0, cumulativeCost: 0 };
+                historyRecords = [];
+                updateStats();
+                renderHistory();
+                resetEcho();
+            }
         }
 
         function updateStats() {
@@ -311,8 +381,9 @@
             document.getElementById('statSuccess').innerText = stats.success.toLocaleString();
             const rate = stats.total > 0 ? (stats.success / stats.total) * 100 : 0;
             document.getElementById('statRate').innerText = rate.toFixed(2) + '%';
-            const avgCost = stats.total > 0 ? (stats.totalCost / stats.total).toFixed(1) : '0.0';
+            const avgCost = stats.total > 0 ? (stats.cumulativeCost / stats.total).toFixed(1) : '0.0';
             document.getElementById('statAvgCost').innerText = avgCost;
+            document.getElementById('totalCumulativeCost').innerText = stats.cumulativeCost;
         }
 
         function runFastSimulation() {
@@ -350,9 +421,15 @@
 
             stats.total += trials;
             stats.success += succ;
-            stats.totalCost += costSum;
+            stats.cumulativeCost += costSum;
             updateStats();
             alert(`极速模拟 ${trials.toLocaleString()} 次完成！当前统计综合毕业率: ${(succ/trials*100).toFixed(2)}%，平均消耗: ${(costSum/trials).toFixed(1)}点打孔器。`);
+        }
+
+        function resetEcho() {
+            initNewEcho();
+            document.getElementById('btnRoll').disabled = false;
+            document.getElementById('btnRoll').classList.remove('opacity-50', 'cursor-not-allowed');
         }
 
         window.onload = function() {
