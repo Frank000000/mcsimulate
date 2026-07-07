@@ -202,21 +202,6 @@
             return (val * w / maxS) * 50;
         }
 
-        function getMaxRemaining(step) {
-            const tier = document.getElementById('tierSelect').value;
-            const maxS = maxScores[tier];
-            let remContribs = [];
-            for (let i = step; i < 5; i++) {
-                const cat = currentEcho.chosenCats[i];
-                const w = charWeights[cat] || 0;
-                const maxVal = Math.max(...probTables[cat].values);
-                remContribs.push(maxVal * w);
-            }
-            remContribs.sort((a, b) => b - a);
-            const sumRem = remContribs.reduce((a, b) => a + b, 0);
-            return (sumRem / maxS) * 50;
-        }
-
         function renderSlots() {
             const container = document.getElementById('slotsContainer');
             container.innerHTML = '';
@@ -267,15 +252,8 @@
                 adviceBox.className = 'mt-4 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300';
                 adviceBox.innerText = '点击开孔开始强化第一个副词条。';
             } else {
-                const maxRem = getMaxRemaining(currentEcho.currentStep);
-                const optimisticScore = score + (0.95 * maxRem);
-                if (optimisticScore < target) {
-                    adviceBox.className = 'mt-4 p-3 bg-rose-950/60 border border-rose-500/50 rounded-lg text-xs text-rose-300';
-                    adviceBox.innerText = `[建议止损] 当前分 ${score.toFixed(2)} + 剩余期望上限 ${(0.95*maxRem).toFixed(2)} = ${optimisticScore.toFixed(2)} < 目标分 ${target}。建议放弃换胚子！`;
-                } else {
-                    adviceBox.className = 'mt-4 p-3 bg-indigo-950/60 border border-indigo-500/50 rounded-lg text-xs text-indigo-300';
-                    adviceBox.innerText = `[建议继续] 期望达成目标，继续开孔！`;
-                }
+                adviceBox.className = 'mt-4 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300';
+                adviceBox.innerText = `当前已开启 ${currentEcho.currentStep}/5 个词条，请继续开孔。`;
             }
         }
 
