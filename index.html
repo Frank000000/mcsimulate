@@ -21,7 +21,7 @@
         </header>
 
         <!-- 配置面板 -->
-        <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 mb-6 shadow-lg grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 mb-6 shadow-lg grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
                 <label class="block text-xs font-semibold text-slate-400 mb-1">选择角色</label>
                 <select id="charSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:border-amber-400 focus:outline-none">
@@ -31,9 +31,17 @@
             <div>
                 <label class="block text-xs font-semibold text-slate-400 mb-1">声骸档位</label>
                 <select id="tierSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:border-amber-400 focus:outline-none" onchange="updateDisplay()">
-                    <option value="c4">C4 档位 (基础分 7.91)</option>
-                    <option value="c3">C3 档位 (基础分 6.02)</option>
-                    <option value="c1">C1 档位 (基础分 4.20)</option>
+                    <option value="c4">C4 档位 (基分 7.91)</option>
+                    <option value="c3">C3 档位 (基分 6.02)</option>
+                    <option value="c1">C1 档位 (基分 4.20)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">运气模式</label>
+                <select id="luckMode" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:border-amber-400 focus:outline-none" onchange="resetEcho()">
+                    <option value="1">普通模式 </option>
+                    <option value="50">幸运模式 </option>
+                    <option value="500">超级幸运模式 </option>
                 </select>
             </div>
             <div>
@@ -87,7 +95,7 @@
                 <button onclick="autoComplete()" id="btnAuto" class="bg-slate-700 hover:bg-slate-600 font-semibold py-3 px-4 rounded-lg text-sm transition-colors">直接开满</button>
                 <button onclick="saveAndResetEcho(false)" class="bg-rose-600/80 hover:bg-rose-700 font-semibold py-3 px-4 rounded-lg text-sm transition-colors">放弃 / 换新胚子</button>
             </div>
-            
+
             <div id="adviceBox" class="mt-4 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300">
                 提示：点击「开孔 / 强化下一词条」开始强化。
             </div>
@@ -129,7 +137,7 @@
 
         const charWeights = {
             "攻击": 0.13, "攻击百分比": 1.3, "共鸣效率": 0.3,
-            "暴击率": 2.0, "暴击伤害": 1.0, 
+            "暴击率": 2.0, "暴击伤害": 1.0,
             "共鸣技能伤害加成": 0.13, "共鸣解放伤害加成": 1.17
         };
         const baseScores = { "c4": 7.91, "c3": 6.02, "c1": 4.2 };
@@ -164,8 +172,29 @@
         }
 
         function initNewEcho() {
-            currentEcho.chosenCats = shuffleArray([...categories]).slice(0, 5);
-            currentEcho.values = currentEcho.chosenCats.map(cat => getRandomVal(cat));
+            const luckFactor = parseInt(document.getElementById('luckMode').value) || 1;
+
+            let bestEcho = null;
+            let bestScore = -1;
+
+            // 运气模式：底层连抽并直接选取最高分
+            for(let i=0; i<luckFactor; i++) {
+                let cats = shuffleArray([...categories]).slice(0, 5);
+                let vals = cats.map(cat => getRandomVal(cat));
+
+                let wSum = 0;
+                for(let j=0; j<5; j++) {
+                    wSum += vals[j] * (charWeights[cats[j]] || 0);
+                }
+
+                if(wSum > bestScore) {
+                    bestScore = wSum;
+                    bestEcho = { cats: cats, vals: vals };
+                }
+            }
+
+            currentEcho.chosenCats = bestEcho.cats;
+            currentEcho.values = bestEcho.vals;
             currentEcho.currentStep = 0;
             currentEcho.cost = 0;
             currentEcho.finished = false;
@@ -211,7 +240,7 @@
                 const rawVal = currentEcho.values[i];
                 const displayVal = cat === '生命' || cat === '攻击' || cat === '防御' ? rawVal : rawVal + '%';
                 const statScore = unlocked ? getSingleStatScore(cat, rawVal).toFixed(2) : '0.00';
-                
+
                 const card = document.createElement('div');
                 card.className = `p-3 rounded-lg border text-center flex flex-col justify-between slot-card ${unlocked ? 'bg-slate-900 border-amber-500/50' : 'bg-slate-900/40 border-slate-700/50'}`;
                 card.innerHTML = `
@@ -231,7 +260,7 @@
             const score = calculateScoreUpTo(currentEcho.currentStep);
             document.getElementById('currentScoreDisplay').innerText = score.toFixed(2);
             document.getElementById('totalCumulativeCost').innerText = stats.cumulativeCost;
-            
+
             const adviceBox = document.getElementById('adviceBox');
             const btnRoll = document.getElementById('btnRoll');
             const target = parseFloat(document.getElementById('targetScore').value);
@@ -253,7 +282,7 @@
                 adviceBox.innerText = '点击开孔开始强化第一个副词条。';
             } else {
                 adviceBox.className = 'mt-4 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300';
-                adviceBox.innerText = `当前已开启 ${currentEcho.currentStep}/5 个词条，请继续开孔。`;
+                adviceBox.innerText = `当前已开启 ${currentEcho.currentStep}/5 个词条，请继续开孔或根据需要换新胚子。`;
             }
         }
 
@@ -263,7 +292,7 @@
             currentEcho.cost += 10;
             stats.cumulativeCost += 10;
             renderSlots();
-            
+
             if (currentEcho.currentStep === 5) {
                 currentEcho.finished = true;
                 stats.total++;
@@ -299,7 +328,7 @@
                 const target = parseFloat(document.getElementById('targetScore').value);
                 const tier = document.getElementById('tierSelect').value.toUpperCase();
                 const status = currentEcho.finished ? (finalScore >= target ? '已毕业' : '未达标') : `中途放弃(${currentEcho.currentStep}/5槽)`;
-                
+
                 const record = {
                     time: new Date().toLocaleTimeString(),
                     tier: tier,
@@ -315,7 +344,7 @@
                 historyRecords.unshift(record);
                 renderHistory();
             }
-            
+
             initNewEcho();
             document.getElementById('btnRoll').disabled = false;
             document.getElementById('btnRoll').classList.remove('opacity-50', 'cursor-not-allowed');
@@ -369,32 +398,33 @@
             const base = baseScores[tier];
             const maxS = maxScores[tier];
             const target = parseFloat(document.getElementById('targetScore').value);
-            
+            const luckFactor = parseInt(document.getElementById('luckMode').value) || 1;
+
             let succ = 0;
             let costSum = 0;
             const trials = 100000;
 
             for (let t = 0; t < trials; t++) {
-                const cats = shuffleArray([...categories]).slice(0, 5);
-                let wSum = 0;
-                let c = 0;
-                let passed = true;
-                for (let k = 1; k <= 5; k++) {
-                    c += 10;
-                    const val = getRandomVal(cats[k-1]);
-                    wSum += val * (charWeights[cats[k-1]] || 0);
-                    const s = base + (wSum / maxS) * 50;
-                    if (k < 5) {
-                        let rem = [];
-                        for (let j = k; j < 5; j++) rem.push(Math.max(...probTables[cats[j]].values) * (charWeights[cats[j]] || 0));
-                        rem.sort((a, b) => b - a);
-                        const sRem = rem.reduce((x, y) => x + y, 0);
-                        if (s + (0.95 * sRem / maxS) * 50 < target) { passed = false; break; }
-                    } else if (s >= target) {
-                        succ++;
+                let bestScore = -1;
+
+                // 运气模式：底层连抽并直接选取最高分
+                for(let i=0; i<luckFactor; i++) {
+                    let cats = shuffleArray([...categories]).slice(0, 5);
+                    let wSum = 0;
+                    for(let j=0; j<5; j++) {
+                        const val = getRandomVal(cats[j]);
+                        wSum += val * (charWeights[cats[j]] || 0);
+                    }
+                    if(wSum > bestScore) {
+                        bestScore = wSum;
                     }
                 }
-                costSum += c;
+
+                const finalScore = base + (bestScore / maxS) * 50;
+                if (finalScore >= target) {
+                    succ++;
+                }
+                costSum += 50; // 去掉剪枝后默认每次头铁全开（固定消耗50打孔器）
             }
 
             stats.total += trials;
