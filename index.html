@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鸣潮声骸强化与打孔模拟器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0b0f19; color: #f8fafc; }
+        .slot-card { transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- 头部 -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-amber-400 mb-2">鸣潮声骸强化与打孔模拟器</h1>
+            <p class="text-slate-400 text-sm">测试运气、计算词条分、寻找最优打孔与止损策略</p>
+        </header>
+
+        <!-- 配置面板 -->
+        <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 mb-6 shadow-lg grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">选择角色</label>
+                <select id="charSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:border-amber-400 focus:outline-none">
+                    <option value="绯雪">绯雪</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">声骸档位</label>
+                <select id="tierSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:border-amber-400 focus:outline-none" onchange="updateDisplay()">
+                    <option value="c4">C4 档位 (基础分 7.91)</option>
+                    <option value="c3">C3 档位 (基础分 6.02)</option>
+                    <option value="c1">C1 档位 (基础分 4.20)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">目标分数</label>
+                <input id="targetScore" type="number" value="33" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:border-amber-400 focus:outline-none" onchange="updateDisplay()">
+            </div>
+        </div>
+
+        <!-- 统计面板 -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
+                <div class="text-slate-400 text-xs">总模拟数</div>
+                <div id="statTotal" class="text-lg font-bold text-slate-100">0</div>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
+                <div class="text-slate-400 text-xs">达标次数</div>
+                <div id="statSuccess" class="text-lg font-bold text-amber-400">0</div>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
+                <div class="text-slate-400 text-xs">当前达标率</div>
+                <div id="statRate" class="text-lg font-bold text-emerald-400">0.00%</div>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 rounded-lg p-3 text-center">
+                <div class="text-slate-400 text-xs">平均打孔消耗</div>
+                <div id="statAvgCost" class="text-lg font-bold text-cyan-400">0.0</div>
+            </div>
+            <div class="bg-slate-800 border border-amber-500/40 rounded-lg p-3 text-center col-span-2 md:col-span-1">
+                <div class="text-amber-400 text-xs font-semibold">本件总消耗打孔器</div>
+                <div id="currentEchoCost" class="text-lg font-bold text-amber-300">0</div>
+            </div>
+        </div>
+
+        <!-- 当前声骸展示区 -->
+        <div class="bg-slate-800/90 border border-slate-700 rounded-xl p-6 mb-6 shadow-xl">
+            <div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-700">
+                <h2 class="text-lg font-bold text-slate-200">当前声骸强化面板</h2>
+                <div class="text-right">
+                    <span class="text-xs text-slate-400">当前总评分: </span>
+                    <span id="currentScoreDisplay" class="text-xl font-extrabold text-amber-400">7.91</span>
+                </div>
+            </div>
+
+            <!-- 5个词条槽位 -->
+            <div id="slotsContainer" class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-6">
+                <!-- 动态生成5个槽位 -->
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex flex-wrap gap-3">
+                <button onclick="rollNextSlot()" id="btnRoll" class="flex-1 bg-amber-500 hover:bg-amber-600 font-semibold py-3 px-4 rounded-lg text-sm text-slate-950 transition-colors shadow">开孔 / 强化下一词条 (+10 打孔器)</button>
+                <button onclick="autoComplete()" id="btnAuto" class="bg-slate-700 hover:bg-slate-600 font-semibold py-3 px-4 rounded-lg text-sm transition-colors">直接开满</button>
+                <button onclick="resetEcho()" class="bg-rose-600/80 hover:bg-rose-700 font-semibold py-3 px-4 rounded-lg text-sm transition-colors">放弃 / 换新胚子</button>
+            </div>
+            
+            <div id="adviceBox" class="mt-4 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300">
+                提示：点击「开孔 / 强化下一词条」开始强化。
+            </div>
+        </div>
+
+        <!-- 极速大样本统计工具 -->
+        <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 text-center">
+            <button onclick="runFastSimulation()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-lg text-sm shadow transition-colors">一键极速模拟 100,000 次统计概率与性价比</button>
+        </div>
+    </div>
+
+    <script>
+        const probTables = {
+            "暴击率": { values: [6.3, 6.9, 7.5, 8.1, 8.7, 9.3, 9.9, 10.5], weights: [0.2333, 0.2333, 0.2333, 0.08, 0.08, 0.08, 0.03, 0.03] },
+            "暴击伤害": { values: [12.6, 13.8, 15.0, 16.2, 17.4, 18.6, 19.8, 21.0], weights: [0.2333, 0.2333, 0.2333, 0.08, 0.08, 0.08, 0.03, 0.03] },
+            "普攻伤害加成": { values: [6.4, 7.1, 7.9, 8.6, 9.4, 10.2, 10.9, 11.6], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "重击伤害加成": { values: [6.4, 7.1, 7.9, 8.6, 9.4, 10.2, 10.9, 11.6], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "共鸣技能伤害加成": { values: [6.4, 7.1, 7.9, 8.6, 9.4, 10.2, 10.9, 11.6], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "共鸣解放伤害加成": { values: [6.4, 7.1, 7.9, 8.6, 9.4, 10.2, 10.9, 11.6], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "攻击百分比": { values: [6.4, 7.1, 7.9, 8.6, 9.4, 10.2, 10.9, 11.6], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "生命百分比": { values: [6.4, 7.1, 7.9, 8.6, 9.4, 10.2, 10.9, 11.6], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "防御百分比": { values: [8.1, 9.0, 10.0, 10.9, 11.8, 12.8, 13.8, 14.7], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "共鸣效率": { values: [6.8, 7.6, 8.4, 9.2, 10.0, 10.8, 11.6, 12.4], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "生命": { values: [320, 360, 390, 430, 470, 510, 540, 580], weights: [0.0680, 0.0777, 0.2039, 0.2427, 0.1748, 0.1456, 0.0583, 0.0291] },
+            "攻击": { values: [30, 40, 50, 60], weights: [0.0680, 0.5243, 0.3786, 0.0291] },
+            "防御": { values: [40, 50, 60, 70], weights: [0.1456, 0.4466, 0.3204, 0.0874] }
+        };
+
+        const charWeights = {
+            "攻击": 0.13, "攻击百分比": 1.3, "共鸣效率": 0.3,
+            "暴击率": 2.0, "暴击伤害": 1.0, 
+            "共鸣技能伤害加成": 0.13, "共鸣解放伤害加成": 1.17
+        };
+        const baseScores = { "c4": 7.91, "c3": 6.02, "c1": 4.2 };
+        const maxScores = { "c4": 93.202, "c3": 89.202, "c1": 85.862 };
+        const categories = Object.keys(probTables);
+
+        let currentEcho = {
+            chosenCats: [],
+            values: [],
+            currentStep: 0,
+            cost: 0,
+            finished: false
+        };
+
+        let stats = { total: 0, success: 0, totalCost: 0 };
+
+        function getRandomVal(cat) {
+            const table = probTables[cat];
+            const idx = weightedRandom(table.weights);
+            return table.values[idx];
+        }
+
+        function weightedRandom(weights) {
+            const sum = weights.reduce((a, b) => a + b, 0);
+            let r = Math.random() * sum;
+            for (let i = 0; i < weights.length; i++) {
+                if (r < weights[i]) return i;
+                r -= weights[i];
+            }
+            return 0;
+        }
+
+        function initNewEcho() {
+            currentEcho.chosenCats = shuffleArray([...categories]).slice(0, 5);
+            currentEcho.values = currentEcho.chosenCats.map(cat => getRandomVal(cat));
+            currentEcho.currentStep = 0;
+            currentEcho.cost = 0;
+            currentEcho.finished = false;
+            renderSlots();
+            updateDisplay();
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function calculateScoreUpTo(step) {
+            const tier = document.getElementById('tierSelect').value;
+            const base = baseScores[tier];
+            const maxS = maxScores[tier];
+            let weightedSum = 0;
+            for (let i = 0; i < step; i++) {
+                const cat = currentEcho.chosenCats[i];
+                const val = currentEcho.values[i];
+                const w = charWeights[cat] || 0;
+                weightedSum += val * w;
+            }
+            return base + (weightedSum / maxS) * 50;
+        }
+
+        function getSingleStatScore(cat, val) {
+            const tier = document.getElementById('tierSelect').value;
+            const maxS = maxScores[tier];
+            const w = charWeights[cat] || 0;
+            return (val * w / maxS) * 50;
+        }
+
+        function getMaxRemaining(step) {
+            const tier = document.getElementById('tierSelect').value;
+            const maxS = maxScores[tier];
+            let remContribs = [];
+            for (let i = step; i < 5; i++) {
+                const cat = currentEcho.chosenCats[i];
+                const w = charWeights[cat] || 0;
+                const maxVal = Math.max(...probTables[cat].values);
+                remContribs.push(maxVal * w);
+            }
+            remContribs.sort((a, b) => b - a);
+            const sumRem = remContribs.reduce((a, b) => a + b, 0);
+            return (sumRem / maxS) * 50;
+        }
+
+        function renderSlots() {
+            const container = document.getElementById('slotsContainer');
+            container.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                const unlocked = i < currentEcho.currentStep;
+                const cat = currentEcho.chosenCats[i];
+                const rawVal = currentEcho.values[i];
+                const displayVal = cat === '生命' || cat === '攻击' || cat === '防御' ? rawVal : rawVal + '%';
+                const statScore = unlocked ? getSingleStatScore(cat, rawVal).toFixed(2) : '0.00';
+                
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-lg border text-center flex flex-col justify-between slot-card ${unlocked ? 'bg-slate-900 border-amber-500/50' : 'bg-slate-900/40 border-slate-700/50'}`;
+                card.innerHTML = `
+                    <div class="text-xs text-slate-400">词条 ${i+1}</div>
+                    <div class="my-1">
+                        <div class="font-bold text-sm ${unlocked ? 'text-amber-300' : 'text-slate-600'}">${unlocked ? cat : '未开启'}</div>
+                        <div class="text-lg font-extrabold ${unlocked ? 'text-white' : 'text-slate-700'}">${unlocked ? displayVal : '???'}</div>
+                        <div class="text-xs font-semibold mt-1 ${unlocked ? 'text-emerald-400' : 'text-transparent'}">+${statScore} 分</div>
+                    </div>
+                    <div class="text-[10px] text-slate-500">消耗 10 打孔器</div>
+                `;
+                container.appendChild(card);
+            }
+            document.getElementById('currentEchoCost').innerText = currentEcho.cost;
+        }
+
+        function updateDisplay() {
+            const score = calculateScoreUpTo(currentEcho.currentStep);
+            document.getElementById('currentScoreDisplay').innerText = score.toFixed(2);
+            document.getElementById('currentEchoCost').innerText = currentEcho.cost;
+            
+            const adviceBox = document.getElementById('adviceBox');
+            const btnRoll = document.getElementById('btnRoll');
+            const target = parseFloat(document.getElementById('targetScore').value);
+
+            if (currentEcho.finished) {
+                btnRoll.disabled = true;
+                btnRoll.classList.add('opacity-50', 'cursor-not-allowed');
+                if (score >= target) {
+                    adviceBox.className = 'mt-4 p-3 bg-emerald-950/60 border border-emerald-500/50 rounded-lg text-xs text-emerald-300';
+                    adviceBox.innerText = `[已达标] 本次强化完成，评分达到 ${score.toFixed(2)} 分！`;
+                } else {
+                    adviceBox.className = 'mt-4 p-3 bg-rose-950/60 border border-rose-500/50 rounded-lg text-xs text-rose-300';
+                    adviceBox.innerText = `[未达标] 最终评分为 ${score.toFixed(2)} 分，未达到目标。`;
+                }
+            } else if (currentEcho.currentStep === 0) {
+                btnRoll.disabled = false;
+                btnRoll.classList.remove('opacity-50', 'cursor-not-allowed');
+                adviceBox.className = 'mt-4 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300';
+                adviceBox.innerText = '点击开孔开始强化第一个副词条。';
+            } else {
+                const maxRem = getMaxRemaining(currentEcho.currentStep);
+                const optimisticScore = score + (0.95 * maxRem); // 混合 0.95 激进系数
+                if (optimisticScore < target) {
+                    adviceBox.className = 'mt-4 p-3 bg-rose-950/60 border border-rose-500/50 rounded-lg text-xs text-rose-300';
+                    adviceBox.innerText = `[建议止损] 当前分 ${score.toFixed(2)} + 剩余期望上限 ${(0.95*maxRem).toFixed(2)} = ${optimisticScore.toFixed(2)} < 目标分 ${target}。建议放弃换胚子！`;
+                } else {
+                    adviceBox.className = 'mt-4 p-3 bg-indigo-950/60 border border-indigo-500/50 rounded-lg text-xs text-indigo-300';
+                    adviceBox.innerText = `[建议继续] 期望达成目标，继续开孔！`;
+                }
+            }
+        }
+
+        function rollNextSlot() {
+            if (currentEcho.finished) return;
+            currentEcho.currentStep++;
+            currentEcho.cost += 10;
+            renderSlots();
+            
+            if (currentEcho.currentStep === 5) {
+                currentEcho.finished = true;
+                stats.total++;
+                stats.totalCost += currentEcho.cost;
+                const finalScore = calculateScoreUpTo(5);
+                const target = parseFloat(document.getElementById('targetScore').value);
+                if (finalScore >= target) stats.success++;
+                updateStats();
+            }
+            updateDisplay();
+        }
+
+        function autoComplete() {
+            if (currentEcho.finished) return;
+            const remaining = 5 - currentEcho.currentStep;
+            currentEcho.currentStep = 5;
+            currentEcho.cost += remaining * 10;
+            currentEcho.finished = true;
+            stats.total++;
+            stats.totalCost += currentEcho.cost;
+            const finalScore = calculateScoreUpTo(5);
+            const target = parseFloat(document.getElementById('targetScore').value);
+            if (finalScore >= target) stats.success++;
+            renderSlots();
+            updateDisplay();
+            updateStats();
+        }
+
+        function resetEcho() {
+            initNewEcho();
+            document.getElementById('btnRoll').disabled = false;
+            document.getElementById('btnRoll').classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        function updateStats() {
+            document.getElementById('statTotal').innerText = stats.total.toLocaleString();
+            document.getElementById('statSuccess').innerText = stats.success.toLocaleString();
+            const rate = stats.total > 0 ? (stats.success / stats.total) * 100 : 0;
+            document.getElementById('statRate').innerText = rate.toFixed(2) + '%';
+            const avgCost = stats.total > 0 ? (stats.totalCost / stats.total).toFixed(1) : '0.0';
+            document.getElementById('statAvgCost').innerText = avgCost;
+        }
+
+        function runFastSimulation() {
+            const tier = document.getElementById('tierSelect').value;
+            const base = baseScores[tier];
+            const maxS = maxScores[tier];
+            const target = parseFloat(document.getElementById('targetScore').value);
+            
+            let succ = 0;
+            let costSum = 0;
+            const trials = 100000;
+
+            for (let t = 0; t < trials; t++) {
+                const cats = shuffleArray([...categories]).slice(0, 5);
+                let wSum = 0;
+                let c = 0;
+                let passed = true;
+                for (let k = 1; k <= 5; k++) {
+                    c += 10;
+                    const val = getRandomVal(cats[k-1]);
+                    wSum += val * (charWeights[cats[k-1]] || 0);
+                    const s = base + (wSum / maxS) * 50;
+                    if (k < 5) {
+                        let rem = [];
+                        for (let j = k; j < 5; j++) rem.push(Math.max(...probTables[cats[j]].values) * (charWeights[cats[j]] || 0));
+                        rem.sort((a, b) => b - a);
+                        const sRem = rem.reduce((x, y) => x + y, 0);
+                        if (s + (0.95 * sRem / maxS) * 50 < target) { passed = false; break; }
+                    } else if (s >= target) {
+                        succ++;
+                    }
+                }
+                costSum += c;
+            }
+
+            stats.total += trials;
+            stats.success += succ;
+            stats.totalCost += costSum;
+            updateStats();
+            alert(`极速模拟 ${trials.toLocaleString()} 次完成！当前统计综合毕业率: ${(succ/trials*100).toFixed(2)}%，平均消耗: ${(costSum/trials).toFixed(1)}点打孔器。`);
+        }
+
+        window.onload = function() {
+            resetEcho();
+        };
+    </script>
+</body>
+</html>
